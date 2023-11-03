@@ -1,16 +1,27 @@
-#ifndef SIMPLESERIAL_ANALYZER_RESULTS
-#define SIMPLESERIAL_ANALYZER_RESULTS
+#ifndef DSHOT_ANALYZER_RESULTS
+#define DSHOT_ANALYZER_RESULTS
 
 #include <AnalyzerResults.h>
 
-class SimpleSerialAnalyzer;
-class SimpleSerialAnalyzerSettings;
 
-class SimpleSerialAnalyzerResults : public AnalyzerResults
+#define ERROR_FLAG_CRC ( 1 << 0 )
+#define ERROR_FLAG_FRAMING ( 1 << 1 )
+
+enum FrameType {
+	VALUE,
+	COMMAND,
+};
+
+
+
+class DShotAnalyzer;
+class DShotAnalyzerSettings;
+
+class DShotAnalyzerResults : public AnalyzerResults
 {
 public:
-	SimpleSerialAnalyzerResults( SimpleSerialAnalyzer* analyzer, SimpleSerialAnalyzerSettings* settings );
-	virtual ~SimpleSerialAnalyzerResults();
+	DShotAnalyzerResults( DShotAnalyzer* analyzer, DShotAnalyzerSettings* settings );
+	virtual ~DShotAnalyzerResults();
 
 	virtual void GenerateBubbleText( U64 frame_index, Channel& channel, DisplayBase display_base );
 	virtual void GenerateExportFile( const char* file, DisplayBase display_base, U32 export_type_user_id );
@@ -22,8 +33,8 @@ public:
 protected: //functions
 
 protected:  //vars
-	SimpleSerialAnalyzerSettings* mSettings;
-	SimpleSerialAnalyzer* mAnalyzer;
+	DShotAnalyzerSettings* mSettings;
+	DShotAnalyzer* mAnalyzer;
 };
 
-#endif //SIMPLESERIAL_ANALYZER_RESULTS
+#endif //DSHOT_ANALYZER_RESULTS
