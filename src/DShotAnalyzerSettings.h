@@ -6,6 +6,13 @@
 class DShotAnalyzerSettings : public AnalyzerSettings
 {
 public:
+
+	enum Telemetry {
+		NONE,
+		SIMPLE,
+		EXTENDED
+	};
+
 	DShotAnalyzerSettings();
 	virtual ~DShotAnalyzerSettings();
 
@@ -17,10 +24,12 @@ public:
 	
 	Channel mInputChannel;
 	double mBitRate;
-	bool mBidir;
+	enum Telemetry mBidir;
+	int mPolepairs;
 
 protected:
 	std::unique_ptr< AnalyzerSettingInterfaceChannel >	mInputChannelInterface;
 	std::unique_ptr< AnalyzerSettingInterfaceNumberList >	mBitRateInterface;
-	std::unique_ptr< AnalyzerSettingInterfaceBool >	mBidirInterface;
+	std::unique_ptr< AnalyzerSettingInterfaceNumberList >	mBidirInterface;
+	std::unique_ptr< AnalyzerSettingInterfaceInteger >	mPolePairsInterface;
 };

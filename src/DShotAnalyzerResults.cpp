@@ -78,25 +78,61 @@ void DShotAnalyzerResults::GenerateBubbleText( U64 frame_index, Channel& channel
 	Frame frame = GetFrame( frame_index );
 
 	if(frame.mFlags) {
-		if(frame.mFlags & ERROR_FLAG_CRC) {
-			AddResultString( "CRC" );
-		}
 		if(frame.mFlags & ERROR_FLAG_FRAMING) {
-			AddResultString( "FRAMING" );
+			AddResultString( "FRAMING_ERROR" );
 		}
-		AddTabularText( "_ERROR");
+		else if(frame.mFlags & ERROR_FLAG_GRC) {
+			AddResultString( "GRC_ERROR" );
+		}
+		else if(frame.mFlags & ERROR_FLAG_CRC) {
+			AddResultString( "CRC_ERROR" );
+		}
+		else {
+			AddResultString( "ERROR" );
+		}
+		
 		
 	}
 	else if(frame.mType == FrameType::VALUE) {
 		char number_str[128];
 		AnalyzerHelpers::GetNumberString( frame.mData1, display_base, 16, number_str, 128 );
-		AddResultString( number_str );
+		AddResultString( "THROTTLE: ", number_str );
 	}
 	else if(frame.mType == FrameType::COMMAND) {
 		if(frame.mData1 < 48) {
-			AddResultString( "CMD" );
-			AddResultString( COMMANDS[frame.mData1] );
+			AddResultString( "CMD: ", COMMANDS[frame.mData1] );
 		}
+	}
+	else if(frame.mType == FrameType::TELEMETRY) {
+		char number_str[128];
+		switch (frame.mData2)
+		{
+		case EDTTypes::RPM:
+			AnalyzerHelpers::GetNumberString( rpm_from_period(frame.mData1), display_base, 16, number_str, 128 );
+			AddResultString( "RPM: ", number_str );
+			break;
+		case EDTTypes::TEMPERATURE:
+			AnalyzerHelpers::GetNumberString( frame.mData1, display_base, 8, number_str, 128 );
+			AddResultString( "TEMPERATURE: ", number_str );
+			break;
+		case EDTTypes::VOLTAGE:
+			AnalyzerHelpers::GetNumberString( 25*frame.mData1, display_base, 16, number_str, 128 );
+			AddResultString( "TEMPERATURE: ", number_str );
+			break;
+		case EDTTypes::CURRENT:
+			AnalyzerHelpers::GetNumberString( frame.mData1, display_base, 8, number_str, 128 );
+			AddResultString( "TEMPERATURE: ", number_str );
+			break;
+		case EDTTypes::STATE:
+			AnalyzerHelpers::GetNumberString( frame.mData1, display_base, 8, number_str, 128 );
+			AddResultString( "TEMPERATURE: ", number_str );
+			break;
+		
+		default:
+			AddResultString( "OTHER" );
+			break;
+		}
+		
 	}
 }
 
@@ -126,17 +162,51 @@ void DShotAnalyzerResults::GenerateExportFile( const char* file, DisplayBase dis
 			if(frame.mFlags & ERROR_FLAG_FRAMING) {
 				file_stream << "FRAMING";
 			}
+			if(frame.mFlags & ERROR_FLAG_GRC) {
+				file_stream << "GRC";
+			}
 			file_stream << "_ERROR" << "," << std::endl;
 		}
 		else if(frame.mType == FrameType::VALUE) {
 			char number_str[128];
 			AnalyzerHelpers::GetNumberString( frame.mData1, display_base, 16, number_str, 128 );
-			file_stream << time_str << "," << "VAL" << "," << number_str << std::endl;
+			file_stream << time_str << "," << "THROTTLE" << "," << number_str << std::endl;
 		}
 		else if(frame.mType == FrameType::COMMAND) {
 			if(frame.mData1 < 48) {
 				file_stream << time_str << "," << "CMD" << "," << COMMANDS[frame.mData1] << std::endl;
 			}
+		}
+		else if(frame.mType == FrameType::TELEMETRY) {
+			char number_str[128];
+			switch (frame.mData2)
+			{
+			case EDTTypes::RPM:
+				AnalyzerHelpers::GetNumberString( rpm_from_period(frame.mData1), display_base, 16, number_str, 128 );
+				file_stream << time_str << "," << "RPM" << "," << number_str;
+				break;
+			case EDTTypes::TEMPERATURE:
+				AnalyzerHelpers::GetNumberString( frame.mData1, display_base, 8, number_str, 128 );
+				file_stream << time_str << "," << "TEMPERATURE" << "," << number_str;
+				break;
+			case EDTTypes::VOLTAGE:
+				AnalyzerHelpers::GetNumberString( 25*frame.mData1, display_base, 16, number_str, 128 );
+				file_stream << time_str << "," << "VOLTAGE" << "," << number_str;
+				break;
+			case EDTTypes::CURRENT:
+				AnalyzerHelpers::GetNumberString( frame.mData1, display_base, 8, number_str, 128 );
+				file_stream << time_str << "," << "CURRENT" << "," << number_str;
+				break;
+			case EDTTypes::STATE:
+				AnalyzerHelpers::GetNumberString( frame.mData1, display_base, 8, number_str, 128 );
+				file_stream << time_str << "," << "STATE" << "," << number_str;
+				break;
+			
+			default:
+				file_stream << time_str << "," << "OTHER";
+				break;
+			}
+			
 		}
 
 		if( UpdateExportProgressAndCheckForCancel( i, num_frames ) == true )
@@ -156,29 +226,64 @@ void DShotAnalyzerResults::GenerateFrameTabularText( U64 frame_index, DisplayBas
 	Frame frame = GetFrame( frame_index );
 	if(frame.mFlags) {
 		if(frame.mFlags & ERROR_FLAG_CRC) {
-			AddTabularText( "CRC");
+			AddTabularText( "CRC_ERROR");
 		}
 		if(frame.mFlags & ERROR_FLAG_FRAMING) {
-			AddTabularText( "FRAMING");
+			AddTabularText( "FRAMING_ERROR");
 		}
-		AddTabularText( "_ERROR");
+		if(frame.mFlags & ERROR_FLAG_GRC) {
+			AddResultString( "GRC_ERROR" );
+		}
 		
 	}
 	else if(frame.mType == FrameType::VALUE) {
 		char number_str[128];
 		AnalyzerHelpers::GetNumberString( frame.mData1, display_base, 16, number_str, 128 );
-		AddTabularText( number_str );
+		AddTabularText( "THROTTLE ", number_str );
 	}
 	else if(frame.mType == FrameType::COMMAND) {
 		if(frame.mData1 < 48) {
-			AddTabularText( COMMANDS[frame.mData1] );
+			AddTabularText( "CMD ", COMMANDS[frame.mData1] );
 		}
 		else {
 			char number_str[128];
 			AnalyzerHelpers::GetNumberString( frame.mData1, display_base, 16, number_str, 128 );
-			AddTabularText( "!", number_str, " (error > 47)" );
+			AddTabularText( "CMD! ", number_str, " (error > 47)" );
 		}
 	}
+	else if(frame.mType == FrameType::TELEMETRY) {
+		char number_str[128];
+		switch (frame.mData2)
+		{
+		case EDTTypes::RPM:
+			{
+				AnalyzerHelpers::GetNumberString( rpm_from_period(frame.mData1), display_base, 64, number_str, 128 );
+				AddTabularText( "RPM ",number_str );
+			}
+			break;
+		case EDTTypes::TEMPERATURE:
+			AnalyzerHelpers::GetNumberString( frame.mData1, display_base, 16, number_str, 128 );
+			AddTabularText( "TEMPERATURE ", number_str );
+			break;
+		case EDTTypes::VOLTAGE:
+			AnalyzerHelpers::GetNumberString( 25*frame.mData1, display_base, 16, number_str, 128 );
+			AddTabularText( "VOLTAGE ", number_str );
+			break;
+		case EDTTypes::CURRENT:
+			AnalyzerHelpers::GetNumberString( frame.mData1, display_base, 8, number_str, 128 );
+			AddTabularText( "CURRENT ", number_str );
+			break;
+		case EDTTypes::STATE:
+			AnalyzerHelpers::GetNumberString( frame.mData1, display_base, 8, number_str, 128 );
+			AddTabularText( "STATE ", number_str );
+			break;
+		default:
+			AddTabularText( "OTHER" );
+			break;
+		}
+		
+	}
+	
 #endif
 }
 
@@ -191,4 +296,13 @@ void DShotAnalyzerResults::GeneratePacketTabularText( U64 packet_id, DisplayBase
 void DShotAnalyzerResults::GenerateTransactionTabularText( U64 transaction_id, DisplayBase display_base )
 {
 	//not supported
+}
+
+U64 DShotAnalyzerResults::rpm_from_period(U64 period) {
+	U64 erpm = 60e6/period;
+	if(period == 65408) {
+		erpm = 0;
+	}
+	U64 rpm = erpm / mSettings->mPolepairs;
+	return rpm;
 }

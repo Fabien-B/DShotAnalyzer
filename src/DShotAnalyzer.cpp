@@ -2,6 +2,10 @@
 #include "DShotAnalyzerSettings.h"
 #include <AnalyzerChannelData.h>
 
+U8 GRC_ENCODING[16] = {
+	0x19, 0x1B, 0x12, 0x13, 0x1D, 0x15, 0x16, 0x17, 0x1A, 0x09, 0x0A, 0x0B, 0x1E, 0x0D, 0x0E, 0x0F
+};
+
 DShotAnalyzer::DShotAnalyzer()
 :	Analyzer2(),  
 	mSettings( new DShotAnalyzerSettings() ),
@@ -29,7 +33,7 @@ void DShotAnalyzer::WorkerThread()
 	mDShot = GetAnalyzerChannelData( mSettings->mInputChannel );
 	U32 samples_per_bit = mSampleRateHz / (mSettings->mBitRate * 1000);
 
-	BitState active_state = mSettings->mBidir ? BIT_LOW : BIT_HIGH;
+	BitState active_state = mSettings->mBidir == DShotAnalyzerSettings::Telemetry::NONE ? BIT_HIGH : BIT_LOW;
 
 	
 
@@ -59,7 +63,12 @@ void DShotAnalyzer::WorkerThread()
 				starting_sample = bit_start_sample;
 				mResults->AddMarker( mDShot->GetSampleNumber(), AnalyzerResults::Start, mSettings->mInputChannel);
 			} else {
-				mResults->AddMarker( mDShot->GetSampleNumber(), AnalyzerResults::UpArrow, mSettings->mInputChannel);
+				if(mSettings->mBidir == DShotAnalyzerSettings::Telemetry::NONE) {
+					mResults->AddMarker( mDShot->GetSampleNumber(), AnalyzerResults::UpArrow, mSettings->mInputChannel);
+				} else {
+					mResults->AddMarker( mDShot->GetSampleNumber(), AnalyzerResults::DownArrow, mSettings->mInputChannel);
+				}
+				
 			}
 			
 
@@ -103,10 +112,10 @@ void DShotAnalyzer::WorkerThread()
 
 		U16 crc_calc;
         U16 thte = data >> 4;
-		if(mSettings->mBidir) {
-			crc_calc =(~(thte ^ (thte >> 4) ^ (thte >> 8))) & 0x0F;
+		if(mSettings->mBidir == DShotAnalyzerSettings::Telemetry::NONE) {
+			crc_calc =  (thte ^ (thte >> 4) ^ (thte >> 8)) & 0x0F;
 		} else {
-			crc_calc = (thte ^ (thte >> 4) ^ (thte >> 8)) & 0x0F;
+			crc_calc =(~(thte ^ (thte >> 4) ^ (thte >> 8))) & 0x0F;
 		}
 
 		U16 crc_received = data & 0x0F;
@@ -142,11 +151,91 @@ void DShotAnalyzer::WorkerThread()
 			mResults->AddMarker( frame_end_sample, AnalyzerResults::ErrorSquare, mSettings->mInputChannel);
 		}
 
-
-
 		mResults->AddFrame( frame );
 		mResults->CommitResults();
 		ReportProgress( frame.mEndingSampleInclusive );
+
+
+
+		if(mSettings->mBidir != DShotAnalyzerSettings::Telemetry::NONE) {
+				Frame erpm_frame;
+				erpm_frame.mType = FrameType::TELEMETRY;
+				
+				mDShot->AdvanceToNextEdge();
+				U64 start = mDShot->GetSampleNumber();
+				erpm_frame.mStartingSampleInclusive = start;
+
+				mResults->AddMarker( mDShot->GetSampleNumber(), AnalyzerResults::DownArrow, mSettings->mInputChannel);
+				double spb = samples_per_bit / 1.1534025374855825;
+				BitState last_bit = BIT_LOW;
+				U32 grc = 0;
+				U32 mask = 1<<20;
+				for(int i=0; i<21; i++) {
+					mDShot->AdvanceToAbsPosition(start + spb/2 + i*spb);
+					BitState bit = mDShot->GetBitState();
+					
+					if(bit == last_bit) {
+						mResults->AddMarker( mDShot->GetSampleNumber(), AnalyzerResults::Zero, mSettings->mInputChannel);
+					} else {
+						grc |= mask;
+						mResults->AddMarker( mDShot->GetSampleNumber(), AnalyzerResults::One, mSettings->mInputChannel);
+					}
+					last_bit = bit;
+					mask >>= 1;
+				}
+				mDShot->AdvanceToAbsPosition(start + spb/2 + 21*spb);
+				erpm_frame.mEndingSampleInclusive = mDShot->GetSampleNumber();
+				//erpm_frame.mFlags = flags;
+				U16 data = 0;
+				for(int i=0; i<4; i++) {
+					U8 grc_nibble = grc & 0x1F;
+					for(int j=0; j<16; j++) {
+						if(GRC_ENCODING[j] == grc_nibble) {
+							data |= j << (4*i);
+							break;
+						}
+						else {
+							if(j==15) {
+								// grc code not found in the lookup table
+								erpm_frame.mFlags |= (DISPLAY_AS_ERROR_FLAG | ERROR_FLAG_GRC);
+							}
+						}
+					}
+					grc >>= 5;
+				}
+
+				U16 erpm_data = data >> 4;
+				crc_calc =  (erpm_data ^ (erpm_data >> 4) ^ (erpm_data >> 8)) & 0x0F;
+				U16 crc_received = data & 0x0F;
+
+				// Put CRC_ERROR flag only if there is no framing error
+				if(crc_calc != crc_received) {
+					flags |= ERROR_FLAG_CRC;
+					flags |= DISPLAY_AS_ERROR_FLAG;
+				}
+
+				if(mSettings->mBidir == DShotAnalyzerSettings::Telemetry::EXTENDED &&
+					(erpm_data & (1<<8)) == 0) {
+					// special EDT frame
+					U8 packet_type = erpm_data >> 8;
+					U8 value = erpm_data & 0xFF;
+					erpm_frame.mData1 = value;
+					erpm_frame.mData2 = packet_type;
+					
+				}
+				else {
+					// normal eRPM telemetry
+					U64 rpm = (erpm_data & 0x1FF) << (erpm_data>>9);
+					erpm_frame.mData1 = rpm;
+					erpm_frame.mData2 = EDTTypes::RPM;
+				}
+				
+				mResults->AddFrame( erpm_frame );
+				mResults->CommitResults();
+				ReportProgress( erpm_frame.mEndingSampleInclusive );
+		}
+
+
 	}
 }
 

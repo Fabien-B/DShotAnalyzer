@@ -4,6 +4,9 @@ Low level analyser for DShot protocol, used to control ESCs.
 
 Still a work in progress.
 
+A lot of information is coming from this blog: https://brushlesswhoop.com/dshot-and-bidirectional-dshot/
+
+
 
 -----------------------------------------------------
 
